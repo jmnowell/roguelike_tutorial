@@ -19,8 +19,10 @@ pub struct State {
 
 impl State {
     fn run_systems(&mut self) {
+        // run all the systems as necessary.
         let mut vis = VisibilitySystem{};
 
+        
         vis.run_now(&self.ecs);
         self.ecs.maintain();
     }
@@ -28,13 +30,23 @@ impl State {
 
 impl GameState for State {
     fn tick(&mut self, ctx: &mut Rltk) {
+        // clear the screen - this is what the context is
         ctx.cls();
 
+        // capture the player input from the keyboard if any
+        // and try to move the player entity per the player_input
+        // and the try_move_player function
         player_input(self, ctx);
+
+        // update all the systems in the ECS
         self.run_systems();
 
+        // redraw the map - the map is only drawn based on the 
+        // visible/revealed tiles.
         draw_map(&self.ecs, ctx);
 
+        // update the positions on the map for any component that has 
+        // both Position and Renderable.  This includes the player.
         let positions = self.ecs.read_storage::<Position>();
         let renderables = self.ecs.read_storage::<Renderable>();
         let map = self.ecs.fetch::<Map>();

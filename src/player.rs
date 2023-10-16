@@ -11,7 +11,11 @@ pub fn try_move_player(delta_x: i32, delta_y: i32, ecs: &mut World) {
     let mut viewsheds = ecs.write_storage::<Viewshed>();
     let map = ecs.fetch::<Map>();
 
-    for (_players, pos, viewshed) in (&mut players, &mut pos, &mut viewsheds).join() {
+    // iterate through all entities that are 
+    // players, positions, and viewsheds, we are going to modify them 
+    // accordingly
+    for (_players, pos, viewshed) in 
+                (&mut players, &mut pos, &mut viewsheds).join() {
         let dest_idx = map.xy_idx(pos.x + delta_x, pos.y + delta_y);
 
         // collision detection
@@ -27,6 +31,8 @@ pub fn try_move_player(delta_x: i32, delta_y: i32, ecs: &mut World) {
 }
 
 pub fn player_input(gs: &mut State, ctx: &mut Rltk) {
+    // only move the player by one tile depending on which
+    // key has been detected as pressed.
     match ctx.key {
         None => {}
         Some(key) => match key {

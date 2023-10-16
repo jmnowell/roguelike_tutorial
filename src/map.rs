@@ -153,8 +153,6 @@ impl Map {
     }
 }
 
-// remember- &[type] - mutable slice type
-// slice is more versatile than a plain old Vector or array!
 pub fn draw_map(ecs: &World, ctx: &mut Rltk) {
     let map = ecs.fetch::<Map>();
     let mut x = 0;
