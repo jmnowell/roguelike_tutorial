@@ -8,22 +8,32 @@ mod rect;
 pub use rect::Rect;
 mod visibility_system;
 pub use visibility_system::*;
+mod monster_ai_system;
+pub use monster_ai_system::*;
 
-use rltk::{GameState, Rltk, RGB};
+use rltk::{ GameState, Rltk, RGB, Point };
 use specs::prelude::*;
 
+#[derive(PartialEq, Copy, Clone)]
+pub enum RunState {
+    Paused,
+    Running,
+}
 
 pub struct State {
     pub ecs: World,
+    pub runstate: RunState,
 }
 
 impl State {
     fn run_systems(&mut self) {
         // run all the systems as necessary.
         let mut vis = VisibilitySystem{};
-
-        
         vis.run_now(&self.ecs);
+
+        let mut mob = MonsterAI{};
+        mob.run_now(&self.ecs);
+
         self.ecs.maintain();
     }
 }
@@ -33,13 +43,16 @@ impl GameState for State {
         // clear the screen - this is what the context is
         ctx.cls();
 
-        // capture the player input from the keyboard if any
-        // and try to move the player entity per the player_input
-        // and the try_move_player function
-        player_input(self, ctx);
-
-        // update all the systems in the ECS
-        self.run_systems();
+        if self.runstate == RunState::Running {
+            // update all the systems in the ECS
+            self.run_systems();
+            self.runstate = RunState::Paused;
+        } else {
+            // capture the player input from the keyboard if any
+            // and try to move the player entity per the player_input
+            // and the try_move_player function
+            self.runstate = player_input(self, ctx)
+        }
 
         // redraw the map - the map is only drawn based on the 
         // visible/revealed tiles.
@@ -69,13 +82,17 @@ fn main() -> rltk::BError {
                     .build()?;
 
     let mut gs = State {
-        ecs: World::new()
+        ecs: World::new(),
+        runstate: RunState::Running,
     };
 
+    // Component Registrations
     gs.ecs.register::<Position>();
     gs.ecs.register::<Renderable>();
     gs.ecs.register::<Player>();
     gs.ecs.register::<Viewshed>();
+    gs.ecs.register::<Monster>();
+    gs.ecs.register::<Name>();
 
     let map: Map = Map::new_map_rooms_and_corridors();
     let (player_x, player_y) = map.rooms[0].center();
@@ -84,15 +101,22 @@ fn main() -> rltk::BError {
     // populate the dungeon with MONSTERS!
     // g - Goblin
     // o - for WE DA ORKS!
-    for room in map.rooms.iter().skip(1) {
+    for (i, room) in map.rooms.iter().skip(1).enumerate() {
         let (x, y) = room.center();
 
         let glyph: rltk::FontCharType;
+        let name: String;
         let roll = rng.roll_dice(1, 2);
 
         match roll {
-            1 => { glyph = rltk::to_cp437('g') },
-            _ => { glyph = rltk::to_cp437('o')},
+            1 => { 
+                glyph = rltk::to_cp437('g');
+                name = "Goblin".to_string();
+            },
+            _ => { 
+                glyph = rltk::to_cp437('o');
+                name = "Ork".to_string();
+            },
         }
 
         gs.ecs.create_entity()
@@ -107,10 +131,13 @@ fn main() -> rltk::BError {
                     range: 8,
                     dirty: true
                 })
+                .with(Monster{})
+                .with(Name{ name: format!("{} #{}", &name, i)})
                 .build();
     }
 
     gs.ecs.insert(map);
+    gs.ecs.insert(Point::new(player_x, player_x));
 
     gs.ecs
         .create_entity()
@@ -126,6 +153,7 @@ fn main() -> rltk::BError {
             range: 8,
             dirty: true,
         })
+        .with(Name{ name: "Player".to_string() })
         .build();
 
     rltk::main_loop(context, gs)
