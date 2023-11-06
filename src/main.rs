@@ -10,19 +10,26 @@ mod visibility_system;
 pub use visibility_system::*;
 mod monster_ai_system;
 pub use monster_ai_system::*;
+mod map_indexing_system;
+pub use map_indexing_system::*;
+mod melee_combat_system;
+pub use melee_combat_system::*;
+mod damage_system;
+pub use damage_system::*;
 
 use rltk::{ GameState, Rltk, RGB, Point };
 use specs::prelude::*;
 
 #[derive(PartialEq, Copy, Clone)]
 pub enum RunState {
-    Paused,
-    Running,
+    AwaitingInput,
+    PreRun,
+    PlayerTurn,
+    MonsterTurn,
 }
 
 pub struct State {
     pub ecs: World,
-    pub runstate: RunState,
 }
 
 impl State {
@@ -34,6 +41,15 @@ impl State {
         let mut mob = MonsterAI{};
         mob.run_now(&self.ecs);
 
+        let mut map_index = MapIndexingSystem{};
+        map_index.run_now(&self.ecs);
+
+        let mut melee = MeleeCombatSystem{};
+        melee.run_now(&self.ecs);
+
+        let mut dmg = DamageSystem{};
+        dmg.run_now(&self.ecs);
+
         self.ecs.maintain();
     }
 }
@@ -43,23 +59,42 @@ impl GameState for State {
         // clear the screen - this is what the context is
         ctx.cls();
 
-        if self.runstate == RunState::Running {
-            // update all the systems in the ECS
-            self.run_systems();
-            self.runstate = RunState::Paused;
-        } else {
-            // capture the player input from the keyboard if any
-            // and try to move the player entity per the player_input
-            // and the try_move_player function
-            self.runstate = player_input(self, ctx)
+        let mut new_run_state;
+
+        {
+            let run_state = self.ecs.fetch::<RunState>();
+            new_run_state = *run_state;
         }
 
-        // redraw the map - the map is only drawn based on the 
-        // visible/revealed tiles.
+        match new_run_state {
+            RunState::PreRun => {
+                self.run_systems();
+                new_run_state = RunState::AwaitingInput;
+            }
+
+            RunState::AwaitingInput => {
+                new_run_state = player_input(self, ctx);
+            }
+
+            RunState::PlayerTurn => {
+                self.run_systems();
+                new_run_state = RunState::MonsterTurn;
+            }
+
+            RunState::MonsterTurn => {
+                self.run_systems();
+                new_run_state = RunState::AwaitingInput;
+            }
+        }
+
+        {
+            let mut run_writer = self.ecs.write_resource::<RunState>();
+            *run_writer = new_run_state;
+        }
+
+        damage_system::delete_the_dead(&mut self.ecs);
         draw_map(&self.ecs, ctx);
 
-        // update the positions on the map for any component that has 
-        // both Position and Renderable.  This includes the player.
         let positions = self.ecs.read_storage::<Position>();
         let renderables = self.ecs.read_storage::<Renderable>();
         let map = self.ecs.fetch::<Map>();
@@ -72,6 +107,7 @@ impl GameState for State {
             }
         }
     }
+
 }
 
 fn main() -> rltk::BError {
@@ -81,10 +117,7 @@ fn main() -> rltk::BError {
                     .with_title("Roguelike Tutorial")
                     .build()?;
 
-    let mut gs = State {
-        ecs: World::new(),
-        runstate: RunState::Running,
-    };
+    let mut gs = State { ecs: World::new() };
 
     // Component Registrations
     gs.ecs.register::<Position>();
@@ -93,6 +126,10 @@ fn main() -> rltk::BError {
     gs.ecs.register::<Viewshed>();
     gs.ecs.register::<Monster>();
     gs.ecs.register::<Name>();
+    gs.ecs.register::<BlocksTile>();
+    gs.ecs.register::<CombatStats>();
+    gs.ecs.register::<WantsToMelee>();
+    gs.ecs.register::<SufferDamage>();
 
     let map: Map = Map::new_map_rooms_and_corridors();
     let (player_x, player_y) = map.rooms[0].center();
@@ -133,13 +170,17 @@ fn main() -> rltk::BError {
                 })
                 .with(Monster{})
                 .with(Name{ name: format!("{} #{}", &name, i)})
+                .with(BlocksTile{})
+                .with(CombatStats {
+                    max_hp: 16,
+                    hp: 16,
+                    defense: 2,
+                    power: 5,
+                })
                 .build();
     }
 
-    gs.ecs.insert(map);
-    gs.ecs.insert(Point::new(player_x, player_x));
-
-    gs.ecs
+    let player_entity = gs.ecs
         .create_entity()
         .with(Position{ x: player_x, y: player_y })
         .with(Renderable {
@@ -154,7 +195,18 @@ fn main() -> rltk::BError {
             dirty: true,
         })
         .with(Name{ name: "Player".to_string() })
+        .with(CombatStats{
+            max_hp: 30,
+            hp: 30,
+            defense: 2,
+            power: 5
+        })
         .build();
+
+    gs.ecs.insert(map);
+    gs.ecs.insert(Point::new(player_x, player_x));
+    gs.ecs.insert(player_entity);
+    gs.ecs.insert(RunState::PreRun);
 
     rltk::main_loop(context, gs)
 }
