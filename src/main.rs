@@ -16,6 +16,7 @@ mod melee_combat_system;
 pub use melee_combat_system::*;
 mod damage_system;
 pub use damage_system::*;
+mod gui;
 
 use rltk::{ GameState, Rltk, RGB, Point };
 use specs::prelude::*;
@@ -106,8 +107,9 @@ impl GameState for State {
                 ctx.set(pos.x, pos.y, render.fg, render.bg, render.glyph);
             }
         }
-    }
 
+        gui::draw_ui(&self.ecs, ctx);
+    }
 }
 
 fn main() -> rltk::BError {
