@@ -1,4 +1,4 @@
-use super::{ CombatStats, Player };
+use super::{ CombatStats, Player, GameLog };
 
 use rltk::{ RGB, Rltk, Console };
 use specs::prelude::*;
@@ -17,5 +17,17 @@ pub fn draw_ui(ecs: &World, ctx: &mut Rltk) {
         ctx.draw_bar_horizontal(28, 43, 51, stats.hp, stats.max_hp, 
                                 RGB::named(rltk::RED), 
                                 RGB::named(rltk::BLACK));
+    }
+
+    let log = ecs.fetch::<GameLog>();
+
+    let mut y = 44;
+
+    for s in log.entries.iter().rev() {
+        if y < 49 {
+            ctx.print(2, y, s);
+        }
+
+        y += 1;
     }
 }
